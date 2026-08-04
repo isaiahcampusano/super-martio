@@ -1,0 +1,30 @@
+name: Validate Godot project
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Godot 4.7.1
+        run: |
+          curl --fail --location --output godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7.1-stable/Godot_v4.7.1-stable_linux.x86_64.zip
+          unzip -q godot.zip
+          chmod +x Godot_v4.7.1-stable_linux.x86_64
+          sudo mv Godot_v4.7.1-stable_linux.x86_64 /usr/local/bin/godot
+
+      - name: Import and parse project
+        run: godot --headless --path . --editor --quit
+
+      - name: Run automated checks
+        run: godot --headless --path . res://tests/run_tests.tscn

@@ -1,0 +1,132 @@
+extends Node
+
+
+var _failures: Array[String] = []
+var _respawn_position := Vector2.INF
+
+
+func _ready() -> void:
+	call_deferred(&"_run")
+
+
+func _run() -> void:
+	await get_tree().process_frame
+	_test_catalog()
+	_test_save_store()
+	await _test_game_state()
+	await _test_scenes()
+	if _failures.is_empty():
+		print("PASS: Pocket Platformer automated checks completed successfully.")
+		get_tree().quit(0)
+		return
+	for failure in _failures:
+		push_error("FAIL: %s" % failure)
+	get_tree().quit(1)
+
+
+func _test_catalog() -> void:
+	_check(LevelCatalog.has_level(&"level_01"), "Level catalog should contain level_01")
+	_check(LevelCatalog.get_scene_path(&"level_01") == "res://scenes/levels/level_01.tscn", "Level path should be stable")
+	_check(LevelCatalog.get_scene_path(&"missing").is_empty(), "Unknown level IDs should not resolve")
+
+
+func _test_save_store() -> void:
+	var path := "user://pocket_platformer_test_save.cfg"
+	var store := SaveStore.new()
+	store.save_path = path
+	var completed := PackedStringArray(["level_01"])
+	var save_error := store.save_progress(completed, {"level_01": 12.5}, {"level_01": 9})
+	_check(save_error == OK, "SaveStore should write a valid ConfigFile")
+	var loaded := store.load_progress()
+	_check((loaded["completed_levels"] as PackedStringArray).has("level_01"), "SaveStore should restore completed level IDs")
+	_check(is_equal_approx(float((loaded["best_times"] as Dictionary)["level_01"]), 12.5), "SaveStore should restore best times")
+	_check(int((loaded["best_collectibles"] as Dictionary)["level_01"]) == 9, "SaveStore should restore collectible records")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func _test_game_state() -> void:
+	GameState.debug_begin_run(&"level_01")
+	GameState.register_level_spawn(Vector2(20.0, 30.0), 5)
+	_check(GameState.lives == 3, "A new run should start with three lives")
+	_check(GameState.run_status == GameState.RunStatus.PLAYING, "Registering the spawn should start play")
+	_check(GameState.collectible_total == 5, "The level should register its collectible total")
+	_check(GameState.register_collectible(&"test_seed"), "A new collectible should be accepted")
+	_check(not GameState.register_collectible(&"test_seed"), "A duplicate collectible should be rejected")
+	GameState.activate_checkpoint(&"test_checkpoint", Vector2(80.0, 90.0))
+	_check(GameState.spawn_position == Vector2(80.0, 90.0), "Checkpoint should update respawn position")
+	if not GameState.respawn_requested.is_connected(_on_respawn_requested):
+		GameState.respawn_requested.connect(_on_respawn_requested)
+	GameState.request_player_death()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(GameState.lives == 2, "A death should remove exactly one life")
+	_check(_respawn_position == Vector2(80.0, 90.0), "A non-final death should request the checkpoint position")
+	GameState.confirm_respawn()
+	_check(GameState.run_status == GameState.RunStatus.PLAYING, "Confirming respawn should resume play")
+
+
+func _test_scenes() -> void:
+	var required_scenes := [
+		"res://scenes/ui/main_menu.tscn",
+		"res://scenes/ui/level_select.tscn",
+		"res://scenes/ui/gameplay_ui.tscn",
+		"res://scenes/player/player.tscn",
+		"res://scenes/enemies/walker.tscn",
+		"res://scenes/enemies/ledge_patroller.tscn",
+		"res://scenes/enemies/bruiser.tscn",
+		"res://scenes/gameplay/collectible.tscn",
+		"res://scenes/gameplay/checkpoint.tscn",
+		"res://scenes/gameplay/breakable_block.tscn",
+		"res://scenes/gameplay/moving_platform.tscn",
+		"res://scenes/gameplay/spike_hazard.tscn",
+		"res://scenes/gameplay/warp_zone.tscn",
+		"res://scenes/gameplay/level_exit.tscn",
+		"res://scenes/levels/level_01.tscn",
+	]
+	for path: String in required_scenes:
+		_check(ResourceLoader.exists(path), "Scene should exist: %s" % path)
+		_check(load(path) is PackedScene, "Scene should parse as PackedScene: %s" % path)
+
+	GameState.debug_begin_run(&"level_01")
+	var level_scene := load("res://scenes/levels/level_01.tscn") as PackedScene
+	var level := level_scene.instantiate()
+	get_tree().root.add_child(level)
+	for frame in 8:
+		await get_tree().physics_frame
+	_check(level.get_node_or_null("Ground") is TileMapLayer, "Level should build a Ground TileMapLayer")
+	_check(level.get_node_or_null("OneWayPlatforms") is TileMapLayer, "Level should build a one-way TileMapLayer")
+	_check(level.get_node_or_null("Player") is PocketPlayer, "Level should contain the player")
+	_check(get_tree().get_nodes_in_group(&"enemy").size() == 6, "Level should contain six enemy instances")
+	_check(GameState.collectible_total == 14, "Level should expose fourteen collectible locations")
+	_check(level.get_node_or_null("KillPlane") is DeathZone, "Level should contain a kill plane")
+	var player := level.get_node_or_null("Player") as PocketPlayer
+	if player != null:
+		var starting_x := player.global_position.x
+		Input.action_press(&"move_right")
+		for frame in 45:
+			await get_tree().physics_frame
+		Input.action_release(&"move_right")
+		_check(player.global_position.x > starting_x + 70.0, "Player input should move the character to the right")
+
+		for frame in 5:
+			await get_tree().physics_frame
+		var grounded_y := player.global_position.y
+		Input.action_press(&"jump")
+		await get_tree().physics_frame
+		Input.action_release(&"jump")
+		for frame in 4:
+			await get_tree().physics_frame
+		_check(player.global_position.y < grounded_y - 8.0, "Player input should launch a jump")
+	Input.action_release(&"move_right")
+	Input.action_release(&"jump")
+	level.queue_free()
+	await get_tree().process_frame
+
+
+func _on_respawn_requested(position: Vector2) -> void:
+	_respawn_position = position
+
+
+func _check(condition: bool, message: String) -> void:
+	if not condition:
+		_failures.append(message)

@@ -1,0 +1,12 @@
+# Godot-generated cache
+.godot/
+*.translation
+
+# Local exports
+build/*
+!build/.gdignore
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.tmp
