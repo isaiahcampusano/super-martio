@@ -94,19 +94,35 @@ func _test_player_jump() -> void:
 		await get_tree().process_frame
 		await get_tree().process_frame
 		return
+	_check(player.animation_state == PocketPlayer.AnimationState.IDLE, "A grounded stationary player should use the idle animation")
+	Input.action_press(&"crouch")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check(player.animation_state == PocketPlayer.AnimationState.CROUCH, "Crouching should use the crouch animation")
+	Input.action_release(&"crouch")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check(player.animation_state == PocketPlayer.AnimationState.IDLE, "Releasing crouch should restore the idle animation")
 
 	var grounded_y := player.global_position.y
 	var apex_y := grounded_y
+	var saw_rise_animation := false
+	var saw_fall_animation := false
 	Input.action_press(&"jump")
 	for frame in 90:
 		await get_tree().physics_frame
 		apex_y = minf(apex_y, player.global_position.y)
+		saw_rise_animation = saw_rise_animation or player.animation_state == PocketPlayer.AnimationState.RISE
 		if not player.is_on_floor() and player.velocity.y >= 0.0:
+			saw_fall_animation = player.animation_state == PocketPlayer.AnimationState.FALL
 			break
 	Input.action_release(&"jump")
 	var full_jump_height := grounded_y - apex_y
 	_check(full_jump_height >= 100.0, "A full jump should rise high enough to clear a two-tile step")
+	_check(saw_rise_animation, "A rising player should use the rise animation")
+	_check(saw_fall_animation, "A descending player should use the fall animation")
 	_check(await _wait_for_floor(player), "Player should land after a full jump")
+	_check(float(player.get(&"_landing_squash_remaining")) > 0.0, "Landing should activate the squash animation")
 
 	var short_hop_grounded_y := player.global_position.y
 	var short_hop_apex_y := short_hop_grounded_y
@@ -133,6 +149,7 @@ func _test_player_jump() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	_check(player.velocity.y < -450.0, "A second airborne press should launch an air jump (velocity: %.1f)" % player.velocity.y)
+	_check(player.animation_state == PocketPlayer.AnimationState.RISE, "An air jump should return to the rise animation")
 	_check(float(player.get(&"_air_jump_feedback_remaining")) > 0.0, "An air jump should activate its visual feedback")
 	for frame in 4:
 		await get_tree().physics_frame
@@ -202,6 +219,7 @@ func _test_scenes() -> void:
 			await get_tree().physics_frame
 		Input.action_release(&"move_right")
 		_check(player.global_position.x > starting_x + 70.0, "Player input should move the character to the right")
+		_check(player.animation_state == PocketPlayer.AnimationState.RUN, "Ground movement should use the run animation")
 
 		for frame in 5:
 			await get_tree().physics_frame
