@@ -14,6 +14,7 @@ func _run() -> void:
 	_test_catalog()
 	_test_save_store()
 	await _test_game_state()
+	await _test_player_jump()
 	await _test_scenes()
 	if _failures.is_empty():
 		print("PASS: Pocket Platformer automated checks completed successfully.")
@@ -63,6 +64,80 @@ func _test_game_state() -> void:
 	_check(_respawn_position == Vector2(80.0, 90.0), "A non-final death should request the checkpoint position")
 	GameState.confirm_respawn()
 	_check(GameState.run_status == GameState.RunStatus.PLAYING, "Confirming respawn should resume play")
+
+
+func _test_player_jump() -> void:
+	GameState.debug_begin_run(&"level_01")
+	GameState.register_level_spawn(Vector2.ZERO, 0)
+
+	var arena := Node2D.new()
+	var floor := StaticBody2D.new()
+	floor.collision_layer = 1 << 0
+	var floor_collision := CollisionShape2D.new()
+	var floor_shape := RectangleShape2D.new()
+	floor_shape.size = Vector2(640.0, 32.0)
+	floor_collision.shape = floor_shape
+	floor.add_child(floor_collision)
+	floor.position = Vector2(0.0, 120.0)
+	arena.add_child(floor)
+
+	var player_scene := load("res://scenes/player/player.tscn") as PackedScene
+	var player := player_scene.instantiate() as PocketPlayer
+	player.position = Vector2(0.0, 60.0)
+	arena.add_child(player)
+	get_tree().root.add_child(arena)
+
+	var settled := await _wait_for_floor(player)
+	_check(settled, "Player should settle on the jump-test floor")
+	if not settled:
+		arena.queue_free()
+		await get_tree().process_frame
+		return
+
+	var grounded_y := player.global_position.y
+	var apex_y := grounded_y
+	Input.action_press(&"jump")
+	for frame in 90:
+		await get_tree().physics_frame
+		apex_y = minf(apex_y, player.global_position.y)
+		if not player.is_on_floor() and player.velocity.y >= 0.0:
+			break
+	Input.action_release(&"jump")
+	_check(grounded_y - apex_y >= 100.0, "A full jump should rise high enough to clear a two-tile step")
+	_check(await _wait_for_floor(player), "Player should land after a full jump")
+
+	Input.action_press(&"jump")
+	for frame in 6:
+		await get_tree().physics_frame
+	Input.action_release(&"jump")
+	await get_tree().physics_frame
+	Input.action_press(&"jump")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check(player.velocity.y < -450.0, "A second airborne press should launch an air jump (velocity: %.1f)" % player.velocity.y)
+	for frame in 4:
+		await get_tree().physics_frame
+	Input.action_release(&"jump")
+
+	for frame in 90:
+		await get_tree().physics_frame
+		if not player.is_on_floor() and player.velocity.y > 60.0:
+			break
+	_check(not player.is_on_floor() and player.velocity.y > 60.0, "Player should be airborne before testing the jump limit")
+	Input.action_press(&"jump")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check(player.velocity.y > 0.0, "A third airborne press should not launch another jump (velocity: %.1f)" % player.velocity.y)
+	Input.action_release(&"jump")
+	_check(await _wait_for_floor(player), "Player should land after using the air jump")
+
+	Input.action_press(&"jump")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check(player.velocity.y < -450.0, "Landing should restore the normal jump (velocity: %.1f)" % player.velocity.y)
+	Input.action_release(&"jump")
+	arena.queue_free()
+	await get_tree().process_frame
 
 
 func _test_scenes() -> void:
@@ -125,6 +200,14 @@ func _test_scenes() -> void:
 
 func _on_respawn_requested(position: Vector2) -> void:
 	_respawn_position = position
+
+
+func _wait_for_floor(player: PocketPlayer, max_frames := 180) -> bool:
+	for frame in max_frames:
+		if player.is_on_floor():
+			return true
+		await get_tree().physics_frame
+	return player.is_on_floor()
 
 
 func _check(condition: bool, message: String) -> void:
