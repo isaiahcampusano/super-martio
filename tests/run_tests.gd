@@ -92,6 +92,7 @@ func _test_player_jump() -> void:
 	if not settled:
 		arena.queue_free()
 		await get_tree().process_frame
+		await get_tree().process_frame
 		return
 
 	var grounded_y := player.global_position.y
@@ -103,8 +104,25 @@ func _test_player_jump() -> void:
 		if not player.is_on_floor() and player.velocity.y >= 0.0:
 			break
 	Input.action_release(&"jump")
-	_check(grounded_y - apex_y >= 100.0, "A full jump should rise high enough to clear a two-tile step")
+	var full_jump_height := grounded_y - apex_y
+	_check(full_jump_height >= 100.0, "A full jump should rise high enough to clear a two-tile step")
 	_check(await _wait_for_floor(player), "Player should land after a full jump")
+
+	var short_hop_grounded_y := player.global_position.y
+	var short_hop_apex_y := short_hop_grounded_y
+	Input.action_press(&"jump")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	Input.action_release(&"jump")
+	for frame in 90:
+		await get_tree().physics_frame
+		short_hop_apex_y = minf(short_hop_apex_y, player.global_position.y)
+		if not player.is_on_floor() and player.velocity.y >= 0.0:
+			break
+	var short_hop_height := short_hop_grounded_y - short_hop_apex_y
+	_check(short_hop_height >= 40.0, "A quick tap should still produce a noticeable short hop")
+	_check(short_hop_height < full_jump_height - 20.0, "A quick tap should remain shorter than a held jump")
+	_check(await _wait_for_floor(player), "Player should land after a short hop")
 
 	Input.action_press(&"jump")
 	for frame in 6:
@@ -115,6 +133,7 @@ func _test_player_jump() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	_check(player.velocity.y < -450.0, "A second airborne press should launch an air jump (velocity: %.1f)" % player.velocity.y)
+	_check(float(player.get(&"_air_jump_feedback_remaining")) > 0.0, "An air jump should activate its visual feedback")
 	for frame in 4:
 		await get_tree().physics_frame
 	Input.action_release(&"jump")
@@ -137,6 +156,7 @@ func _test_player_jump() -> void:
 	_check(player.velocity.y < -450.0, "Landing should restore the normal jump (velocity: %.1f)" % player.velocity.y)
 	Input.action_release(&"jump")
 	arena.queue_free()
+	await get_tree().process_frame
 	await get_tree().process_frame
 
 
@@ -195,6 +215,7 @@ func _test_scenes() -> void:
 	Input.action_release(&"move_right")
 	Input.action_release(&"jump")
 	level.queue_free()
+	await get_tree().process_frame
 	await get_tree().process_frame
 
 

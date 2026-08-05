@@ -11,7 +11,8 @@ extends CharacterBody2D
 @export var jump_velocity := -520.0
 @export_range(0, 3, 1) var max_air_jumps := 1
 @export var maximum_fall_speed := 700.0
-@export var short_hop_multiplier := 0.45
+@export var short_hop_multiplier := 0.65
+@export var air_jump_feedback_time := 0.16
 @export var stomp_bounce_velocity := -280.0
 @export var coyote_time := 0.10
 @export var jump_buffer_time := 0.12
@@ -27,6 +28,7 @@ var _camera: Camera2D
 var _coyote_remaining := 0.0
 var _jump_buffer_remaining := 0.0
 var _air_jumps_remaining := 0
+var _air_jump_feedback_remaining := 0.0
 var _spawn_protected := false
 var _protection_remaining := 0.0
 var _previous_feet_y := 0.0
@@ -97,7 +99,10 @@ func _physics_process(delta: float) -> void:
 			_coyote_remaining = 0.0
 			if can_air_jump:
 				_air_jumps_remaining -= 1
-			PocketSfx.play(self, 440.0, 0.09, -16.0, 190.0)
+				_air_jump_feedback_remaining = air_jump_feedback_time
+				PocketSfx.play(self, 620.0, 0.11, -14.0, 260.0)
+			else:
+				PocketSfx.play(self, 440.0, 0.09, -16.0, 190.0)
 
 	if Input.is_action_just_released(&"jump") and velocity.y < 0.0:
 		velocity.y *= short_hop_multiplier
@@ -114,6 +119,9 @@ func _physics_process(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	if _air_jump_feedback_remaining > 0.0:
+		_air_jump_feedback_remaining = maxf(0.0, _air_jump_feedback_remaining - delta)
+		queue_redraw()
 	if _spawn_protected:
 		_protection_remaining = maxf(0.0, _protection_remaining - delta)
 		visible = int(_protection_remaining * 14.0) % 2 == 0
@@ -132,6 +140,10 @@ func _draw() -> void:
 	draw_circle(Vector2(facing * 7.0, top + 11.0), 3.0, Color("10213b"))
 	draw_line(Vector2(-12.0, 24.0), Vector2(-12.0 - velocity.x * 0.025, 24.0), Color("b5ffe5"), 3.0)
 	draw_line(Vector2(12.0, 24.0), Vector2(12.0 - velocity.x * 0.025, 24.0), Color("b5ffe5"), 3.0)
+	if _air_jump_feedback_remaining > 0.0:
+		var progress := 1.0 - _air_jump_feedback_remaining / maxf(air_jump_feedback_time, 0.001)
+		var ring_color := Color(0.97, 0.89, 0.35, 1.0 - progress)
+		draw_arc(Vector2.ZERO, 24.0 + progress * 12.0, 0.0, TAU, 24, ring_color, 3.0)
 
 
 func apply_camera_bounds(bounds: Rect2i) -> void:
@@ -146,6 +158,7 @@ func teleport_to(target: Vector2, bounds: Rect2i) -> void:
 	global_position = target
 	velocity = Vector2.ZERO
 	_reset_air_jumps()
+	_air_jump_feedback_remaining = 0.0
 	_previous_feet_y = global_position.y + 24.0
 	apply_camera_bounds(bounds)
 
@@ -243,6 +256,7 @@ func _on_respawn_requested(position: Vector2) -> void:
 	global_position = position
 	velocity = Vector2.ZERO
 	_reset_air_jumps()
+	_air_jump_feedback_remaining = 0.0
 	controls_enabled = true
 	_spawn_protected = true
 	_protection_remaining = 1.25

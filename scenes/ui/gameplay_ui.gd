@@ -56,7 +56,7 @@ func _build_hud() -> void:
 	row.add_child(_seeds_label)
 	row.add_child(_time_label)
 
-	var hint := PocketUiStyle.make_label("Shift: sprint   S/↓: crouch or enter a doorway   Esc: pause", 14, PocketUiStyle.MUTED)
+	var hint := PocketUiStyle.make_label("Space: jump / double-jump   Shift: sprint   S/↓: crouch or doorway   Esc: pause", 14, PocketUiStyle.MUTED)
 	hint.position = Vector2(24.0, 500.0)
 	add_child(hint)
 
@@ -181,4 +181,3 @@ func _format_time(seconds: float) -> String:
 	var whole_seconds := int(seconds) % 60
 	var centiseconds := int(seconds * 100.0) % 100
 	return "%02d:%02d.%02d" % [minutes, whole_seconds, centiseconds]
-
