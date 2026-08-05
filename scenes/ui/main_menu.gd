@@ -73,7 +73,7 @@ func _build_menu() -> void:
 		quit_button.pressed.connect(get_tree().quit)
 		column.add_child(quit_button)
 
-	var controls := PocketUiStyle.make_label("Move: A/D or arrows  •  Jump: Space  •  Sprint: Shift  •  Pause: Esc", 14, PocketUiStyle.MUTED)
+	var controls := PocketUiStyle.make_label("Move: A/D or arrows  •  Jump: Space (press again in air)\nSprint: Shift  •  Pause: Esc", 14, PocketUiStyle.MUTED)
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(controls)
 	play_button.grab_focus()
@@ -83,4 +83,3 @@ func _on_play_pressed() -> void:
 	var error := get_tree().change_scene_to_file("res://scenes/ui/level_select.tscn")
 	if error != OK:
 		push_error("Could not open level select: %s" % error_string(error))
-

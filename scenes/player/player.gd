@@ -2,6 +2,9 @@ class_name PocketPlayer
 extends CharacterBody2D
 
 
+enum AnimationState { IDLE, RUN, RISE, FALL, CROUCH }
+
+
 @export var walk_speed := 180.0
 @export var sprint_speed := 280.0
 @export var ground_acceleration := 1500.0
@@ -11,7 +14,10 @@ extends CharacterBody2D
 @export var jump_velocity := -520.0
 @export_range(0, 3, 1) var max_air_jumps := 1
 @export var maximum_fall_speed := 700.0
-@export var short_hop_multiplier := 0.45
+@export var short_hop_multiplier := 0.65
+@export var air_jump_feedback_time := 0.16
+@export var run_animation_speed := 14.0
+@export var landing_squash_time := 0.14
 @export var stomp_bounce_velocity := -280.0
 @export var coyote_time := 0.10
 @export var jump_buffer_time := 0.12
@@ -19,6 +25,7 @@ extends CharacterBody2D
 var facing := 1.0
 var controls_enabled := true
 var is_crouched := false
+var animation_state := AnimationState.IDLE
 
 var _standing_shape: CollisionShape2D
 var _crouching_shape: CollisionShape2D
@@ -27,6 +34,10 @@ var _camera: Camera2D
 var _coyote_remaining := 0.0
 var _jump_buffer_remaining := 0.0
 var _air_jumps_remaining := 0
+var _air_jump_feedback_remaining := 0.0
+var _animation_time := 0.0
+var _run_cycle := 0.0
+var _landing_squash_remaining := 0.0
 var _spawn_protected := false
 var _protection_remaining := 0.0
 var _previous_feet_y := 0.0
@@ -50,12 +61,17 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	var was_grounded := is_on_floor()
 	if GameState.run_status != GameState.RunStatus.PLAYING or not controls_enabled:
 		velocity.x = move_toward(velocity.x, 0.0, ground_deceleration * delta)
 		if not is_on_floor():
 			velocity.y = minf(velocity.y + gravity * delta, maximum_fall_speed)
+		var disabled_impact_speed := maxf(0.0, velocity.y)
 		move_and_slide()
+		_register_landing(was_grounded, disabled_impact_speed)
+		_update_animation_state()
 		_previous_feet_y = global_position.y + 24.0
+		queue_redraw()
 		return
 
 	if is_on_floor():
@@ -97,7 +113,10 @@ func _physics_process(delta: float) -> void:
 			_coyote_remaining = 0.0
 			if can_air_jump:
 				_air_jumps_remaining -= 1
-			PocketSfx.play(self, 440.0, 0.09, -16.0, 190.0)
+				_air_jump_feedback_remaining = air_jump_feedback_time
+				PocketSfx.play(self, 620.0, 0.11, -14.0, 260.0)
+			else:
+				PocketSfx.play(self, 440.0, 0.09, -16.0, 190.0)
 
 	if Input.is_action_just_released(&"jump") and velocity.y < 0.0:
 		velocity.y *= short_hop_multiplier
@@ -106,14 +125,27 @@ func _physics_process(delta: float) -> void:
 		velocity.y = minf(velocity.y + gravity * delta, maximum_fall_speed)
 
 	var was_rising := velocity.y < 0.0
+	var impact_speed := maxf(0.0, velocity.y)
 	move_and_slide()
+	_register_landing(was_grounded, impact_speed)
 	if was_rising:
 		_handle_ceiling_collisions()
+	_update_animation_state()
 	_previous_feet_y = global_position.y + 24.0
 	queue_redraw()
 
 
 func _process(delta: float) -> void:
+	_animation_time += delta
+	if animation_state == AnimationState.RUN:
+		var speed_ratio := clampf(absf(velocity.x) / maxf(sprint_speed, 1.0), 0.35, 1.25)
+		_run_cycle = fposmod(_run_cycle + delta * run_animation_speed * speed_ratio, TAU)
+	if _landing_squash_remaining > 0.0:
+		_landing_squash_remaining = maxf(0.0, _landing_squash_remaining - delta)
+		queue_redraw()
+	if _air_jump_feedback_remaining > 0.0:
+		_air_jump_feedback_remaining = maxf(0.0, _air_jump_feedback_remaining - delta)
+		queue_redraw()
 	if _spawn_protected:
 		_protection_remaining = maxf(0.0, _protection_remaining - delta)
 		visible = int(_protection_remaining * 14.0) % 2 == 0
@@ -123,15 +155,63 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	if _air_jump_feedback_remaining > 0.0:
+		var feedback_progress := 1.0 - _air_jump_feedback_remaining / maxf(air_jump_feedback_time, 0.001)
+		var ring_color := Color(0.97, 0.89, 0.35, 1.0 - feedback_progress)
+		draw_arc(Vector2(0.0, 4.0), 24.0 + feedback_progress * 12.0, 0.0, TAU, 24, ring_color, 3.0)
+
 	var height := 30.0 if is_crouched else 48.0
-	var top := 24.0 - height
+	var visual_scale := Vector2.ONE
+	var visual_rotation := 0.0
+	var idle_bob := 0.0
+	var stride := 0.0
+	match animation_state:
+		AnimationState.IDLE:
+			idle_bob = sin(_animation_time * 2.4) * 1.2
+		AnimationState.RUN:
+			stride = sin(_run_cycle) * 8.0
+			visual_rotation = -facing * 0.045 * clampf(absf(velocity.x) / maxf(sprint_speed, 1.0), 0.0, 1.0)
+			visual_scale = Vector2(0.98, 1.02 + absf(sin(_run_cycle)) * 0.035)
+		AnimationState.RISE:
+			visual_scale = Vector2(0.88, 1.11)
+			visual_rotation = -facing * 0.025
+		AnimationState.FALL:
+			visual_scale = Vector2(1.07, 0.94)
+		AnimationState.CROUCH:
+			visual_scale = Vector2(1.10, 0.90)
+	if _landing_squash_remaining > 0.0:
+		var squash_weight := _landing_squash_remaining / maxf(landing_squash_time, 0.001)
+		visual_scale.x += 0.20 * squash_weight
+		visual_scale.y -= 0.18 * squash_weight
+
+	draw_set_transform(Vector2(0.0, 24.0 + idle_bob), visual_rotation, visual_scale)
+	var top := -height
 	var body_color := Color("66e6b4")
 	var shadow_color := Color("1d8d78")
 	draw_rect(Rect2(-16.0, top, 32.0, height), body_color, true)
-	draw_rect(Rect2(-16.0, 14.0, 32.0, 10.0), shadow_color, true)
-	draw_circle(Vector2(facing * 7.0, top + 11.0), 3.0, Color("10213b"))
-	draw_line(Vector2(-12.0, 24.0), Vector2(-12.0 - velocity.x * 0.025, 24.0), Color("b5ffe5"), 3.0)
-	draw_line(Vector2(12.0, 24.0), Vector2(12.0 - velocity.x * 0.025, 24.0), Color("b5ffe5"), 3.0)
+	draw_rect(Rect2(-16.0, -10.0, 32.0, 10.0), shadow_color, true)
+
+	var arm_swing := -stride * 0.55
+	draw_line(Vector2(-15.0, top + 22.0), Vector2(-20.0 + arm_swing, top + 31.0), body_color.lightened(0.18), 4.0)
+	draw_line(Vector2(15.0, top + 22.0), Vector2(20.0 - arm_swing, top + 31.0), body_color.lightened(0.18), 4.0)
+	draw_line(Vector2(-10.0, -4.0), Vector2(-10.0 + stride, 0.0), Color("b5ffe5"), 4.0)
+	draw_line(Vector2(10.0, -4.0), Vector2(10.0 - stride, 0.0), Color("b5ffe5"), 4.0)
+
+	var sprout_sway := sin(_animation_time * 3.1) * 2.0 + stride * 0.12
+	draw_line(Vector2(0.0, top), Vector2(sprout_sway, top - 7.0), shadow_color, 3.0)
+	draw_circle(Vector2(sprout_sway + facing * 2.0, top - 8.0), 4.0, body_color.lightened(0.22))
+
+	var eye_y := top + 11.0
+	var is_blinking := fmod(_animation_time, 3.6) > 3.48
+	if is_blinking:
+		draw_line(Vector2(facing * 4.0, eye_y), Vector2(facing * 10.0, eye_y), Color("10213b"), 2.0)
+	else:
+		draw_circle(Vector2(facing * 7.0, eye_y), 3.0, Color("10213b"))
+	if animation_state == AnimationState.FALL:
+		draw_circle(Vector2(facing * 6.0, eye_y + 10.0), 2.0, Color("10213b"))
+	else:
+		draw_line(Vector2(facing * 4.0, eye_y + 9.0), Vector2(facing * 9.0, eye_y + 8.0), Color("10213b"), 2.0)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func apply_camera_bounds(bounds: Rect2i) -> void:
@@ -146,6 +226,9 @@ func teleport_to(target: Vector2, bounds: Rect2i) -> void:
 	global_position = target
 	velocity = Vector2.ZERO
 	_reset_air_jumps()
+	_air_jump_feedback_remaining = 0.0
+	_landing_squash_remaining = 0.0
+	_run_cycle = 0.0
 	_previous_feet_y = global_position.y + 24.0
 	apply_camera_bounds(bounds)
 
@@ -230,6 +313,26 @@ func _reset_air_jumps() -> void:
 	_air_jumps_remaining = max_air_jumps
 
 
+func _register_landing(was_grounded: bool, impact_speed: float) -> void:
+	if was_grounded or not is_on_floor():
+		return
+	var impact_weight := clampf(impact_speed / 520.0, 0.3, 1.0)
+	_landing_squash_remaining = landing_squash_time * impact_weight
+
+
+func _update_animation_state() -> void:
+	var next_state := AnimationState.IDLE
+	if is_crouched:
+		next_state = AnimationState.CROUCH
+	elif not is_on_floor():
+		next_state = AnimationState.RISE if velocity.y < 0.0 else AnimationState.FALL
+	elif absf(velocity.x) > 12.0:
+		next_state = AnimationState.RUN
+	if animation_state != next_state:
+		animation_state = next_state
+		queue_redraw()
+
+
 func _handle_ceiling_collisions() -> void:
 	for index in get_slide_collision_count():
 		var collision := get_slide_collision(index)
@@ -243,6 +346,9 @@ func _on_respawn_requested(position: Vector2) -> void:
 	global_position = position
 	velocity = Vector2.ZERO
 	_reset_air_jumps()
+	_air_jump_feedback_remaining = 0.0
+	_landing_squash_remaining = 0.0
+	_run_cycle = 0.0
 	controls_enabled = true
 	_spawn_protected = true
 	_protection_remaining = 1.25
