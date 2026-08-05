@@ -8,7 +8,8 @@ extends CharacterBody2D
 @export var ground_deceleration := 1800.0
 @export var air_acceleration := 900.0
 @export var gravity := 1200.0
-@export var jump_velocity := -420.0
+@export var jump_velocity := -520.0
+@export_range(0, 3, 1) var max_air_jumps := 1
 @export var maximum_fall_speed := 700.0
 @export var short_hop_multiplier := 0.45
 @export var stomp_bounce_velocity := -280.0
@@ -25,6 +26,7 @@ var _ceiling_check: ShapeCast2D
 var _camera: Camera2D
 var _coyote_remaining := 0.0
 var _jump_buffer_remaining := 0.0
+var _air_jumps_remaining := 0
 var _spawn_protected := false
 var _protection_remaining := 0.0
 var _previous_feet_y := 0.0
@@ -42,6 +44,7 @@ func _ready() -> void:
 	GameState.respawn_requested.connect(_on_respawn_requested)
 	GameState.game_over.connect(_on_game_over)
 	GameState.level_completed.connect(_on_level_completed)
+	_reset_air_jumps()
 	_previous_feet_y = global_position.y + 24.0
 	queue_redraw()
 
@@ -57,6 +60,7 @@ func _physics_process(delta: float) -> void:
 
 	if is_on_floor():
 		_coyote_remaining = coyote_time
+		_reset_air_jumps()
 	else:
 		_coyote_remaining = maxf(0.0, _coyote_remaining - delta)
 
@@ -84,11 +88,16 @@ func _physics_process(delta: float) -> void:
 		acceleration = ground_deceleration
 	velocity.x = move_toward(velocity.x, target_speed, acceleration * delta)
 
-	if _jump_buffer_remaining > 0.0 and _coyote_remaining > 0.0 and not is_crouched:
-		velocity.y = jump_velocity
-		_jump_buffer_remaining = 0.0
-		_coyote_remaining = 0.0
-		PocketSfx.play(self, 440.0, 0.09, -16.0, 190.0)
+	if _jump_buffer_remaining > 0.0 and not is_crouched:
+		var can_ground_jump := _coyote_remaining > 0.0
+		var can_air_jump := not can_ground_jump and _air_jumps_remaining > 0
+		if can_ground_jump or can_air_jump:
+			velocity.y = jump_velocity
+			_jump_buffer_remaining = 0.0
+			_coyote_remaining = 0.0
+			if can_air_jump:
+				_air_jumps_remaining -= 1
+			PocketSfx.play(self, 440.0, 0.09, -16.0, 190.0)
 
 	if Input.is_action_just_released(&"jump") and velocity.y < 0.0:
 		velocity.y *= short_hop_multiplier
@@ -136,6 +145,7 @@ func apply_camera_bounds(bounds: Rect2i) -> void:
 func teleport_to(target: Vector2, bounds: Rect2i) -> void:
 	global_position = target
 	velocity = Vector2.ZERO
+	_reset_air_jumps()
 	_previous_feet_y = global_position.y + 24.0
 	apply_camera_bounds(bounds)
 
@@ -216,6 +226,10 @@ func _set_crouched(value: bool) -> void:
 	queue_redraw()
 
 
+func _reset_air_jumps() -> void:
+	_air_jumps_remaining = max_air_jumps
+
+
 func _handle_ceiling_collisions() -> void:
 	for index in get_slide_collision_count():
 		var collision := get_slide_collision(index)
@@ -228,6 +242,7 @@ func _handle_ceiling_collisions() -> void:
 func _on_respawn_requested(position: Vector2) -> void:
 	global_position = position
 	velocity = Vector2.ZERO
+	_reset_air_jumps()
 	controls_enabled = true
 	_spawn_protected = true
 	_protection_remaining = 1.25
@@ -244,4 +259,3 @@ func _on_game_over() -> void:
 func _on_level_completed(_summary: Dictionary) -> void:
 	controls_enabled = false
 	velocity = Vector2.ZERO
-
