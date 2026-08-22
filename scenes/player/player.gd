@@ -236,7 +236,7 @@ func teleport_to(target: Vector2, bounds: Rect2i) -> void:
 func resolve_enemy_contact(enemy: Node2D, stomp_plane_y: float) -> void:
 	if not controls_enabled or _spawn_protected:
 		return
-	var valid_stomp := velocity.y > 40.0 and _previous_feet_y <= stomp_plane_y + 9.0
+	var valid_stomp := velocity.y > 10.0 and _previous_feet_y <= stomp_plane_y + 12.0
 	if valid_stomp and enemy.has_method(&"receive_stomp"):
 		var accepted: bool = enemy.call(&"receive_stomp")
 		if accepted:
