@@ -19,6 +19,7 @@ func _ready() -> void:
 	_build_overlay()
 	GameState.lives_changed.connect(_on_lives_changed)
 	GameState.collectibles_changed.connect(_on_collectibles_changed)
+	GameState.time_bonus_awarded.connect(_on_time_bonus_awarded)
 	GameState.game_over.connect(_on_game_over)
 	GameState.level_completed.connect(_on_level_completed)
 	_on_lives_changed(GameState.lives)
@@ -174,6 +175,19 @@ func _on_lives_changed(value: int) -> void:
 
 func _on_collectibles_changed(value: int, total: int) -> void:
 	_seeds_label.text = "SEEDS  %d/%d" % [value, total]
+
+
+func _on_time_bonus_awarded(seconds: float) -> void:
+	var popup := PocketUiStyle.make_label("-%.1fs" % seconds, 22, PocketUiStyle.MINT)
+	popup.name = "TimeBonusPopup"
+	popup.position = Vector2(492.0, 74.0)
+	popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(popup)
+	var tween := popup.create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(popup, "position:y", popup.position.y - 28.0, 0.85)
+	tween.tween_property(popup, "modulate:a", 0.0, 0.85).set_delay(0.25)
+	tween.chain().tween_callback(popup.queue_free)
 
 
 func _format_time(seconds: float) -> String:

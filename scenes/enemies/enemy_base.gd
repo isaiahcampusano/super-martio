@@ -8,6 +8,7 @@ extends CharacterBody2D
 @export var maximum_health := 1
 @export var turns_at_edges := false
 @export var body_color := Color("bc6cff")
+@export var defeat_time_bonus := 2.0
 
 var direction := -1.0
 var health := 1
@@ -50,6 +51,7 @@ func receive_stomp() -> bool:
 	health -= 1
 	PocketSfx.play(self, 190.0 if health > 0 else 120.0, 0.09, -17.0, -40.0)
 	if health <= 0:
+		GameState.award_enemy_time_bonus(defeat_time_bonus)
 		collision_layer = 0
 		_contact_area.set_deferred("monitoring", false)
 		var tween := create_tween()
@@ -123,4 +125,3 @@ func _draw() -> void:
 	if maximum_health > 1:
 		draw_line(Vector2(-10.0, -body_size.y * 0.5 - 5.0), Vector2(10.0, -body_size.y * 0.5 - 5.0), Color("18233d"), 5.0)
 		draw_line(Vector2(-10.0, -body_size.y * 0.5 - 5.0), Vector2(-10.0 + 20.0 * float(health) / float(maximum_health), -body_size.y * 0.5 - 5.0), Color("ff6b72"), 3.0)
-

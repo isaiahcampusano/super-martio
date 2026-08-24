@@ -16,6 +16,7 @@ func _run() -> void:
 	await _test_game_state()
 	await _test_player_jump()
 	await _test_powerup_box()
+	await _test_enemy_bonus()
 	await _test_scenes()
 	if _failures.is_empty():
 		print("PASS: Pocket Platformer automated checks completed successfully.")
@@ -223,6 +224,47 @@ func _test_powerup_box() -> void:
 		var lives_before := GameState.lives
 		(powerups[0] as PocketPowerup)._on_body_entered(probe)
 		_check(GameState.lives == lives_before + 1, "Collecting the spawned Star Sprout should grant one life")
+	arena.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+
+func _test_enemy_bonus() -> void:
+	GameState.debug_begin_run(&"level_01")
+	GameState.register_level_spawn(Vector2.ZERO, 0)
+	var arena := Node2D.new()
+	get_tree().root.add_child(arena)
+	var enemy := PocketEnemy.new()
+	enemy.maximum_health = 2
+	enemy.defeat_time_bonus = 2.0
+	arena.add_child(enemy)
+	await get_tree().physics_frame
+	GameState.elapsed_time = 12.0
+
+	_check(enemy.receive_stomp(), "A healthy enemy should accept a stomp")
+	_check(is_equal_approx(GameState.elapsed_time, 12.0), "A non-lethal stomp should not award the defeat bonus")
+	enemy._reset_stomp_cooldown()
+	_check(enemy.receive_stomp(), "A damaged enemy should accept the lethal stomp")
+	_check(is_equal_approx(GameState.elapsed_time, 10.0), "Defeating an enemy should deduct two seconds from the run timer")
+	_check(enemy.collision_layer == 0, "A defeated enemy should retain its existing collision shutdown behavior")
+
+	GameState.elapsed_time = 1.0
+	_check(GameState.award_enemy_time_bonus(2.0), "A valid time bonus should be accepted during play")
+	_check(is_zero_approx(GameState.elapsed_time), "A time bonus should never make the run timer negative")
+	GameState.run_status = GameState.RunStatus.COMPLETE
+	_check(not GameState.award_enemy_time_bonus(2.0), "A time bonus should not alter a completed run")
+
+	GameState.debug_begin_run(&"level_01")
+	GameState.register_level_spawn(Vector2.ZERO, 0)
+	var ui_scene := load("res://scenes/ui/gameplay_ui.tscn") as PackedScene
+	var ui := ui_scene.instantiate() as GameplayUi
+	arena.add_child(ui)
+	await get_tree().process_frame
+	GameState.elapsed_time = 8.0
+	GameState.award_enemy_time_bonus(2.0)
+	await get_tree().process_frame
+	var popup := ui.find_child("TimeBonusPopup", true, false) as Label
+	_check(popup != null and popup.text == "-2.0s", "The HUD should show immediate feedback for an enemy time bonus")
 	arena.queue_free()
 	await get_tree().process_frame
 	await get_tree().process_frame

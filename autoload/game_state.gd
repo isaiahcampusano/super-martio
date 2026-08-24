@@ -3,6 +3,7 @@ extends Node
 
 signal lives_changed(value: int)
 signal collectibles_changed(value: int, total: int)
+signal time_bonus_awarded(seconds: float)
 signal checkpoint_changed(checkpoint_id: StringName)
 signal respawn_requested(position: Vector2)
 signal game_over
@@ -93,6 +94,14 @@ func grant_extra_life() -> bool:
 		return false
 	lives += 1
 	lives_changed.emit(lives)
+	return true
+
+
+func award_enemy_time_bonus(seconds: float) -> bool:
+	if run_status != RunStatus.PLAYING or seconds <= 0.0:
+		return false
+	elapsed_time = maxf(0.0, elapsed_time - seconds)
+	time_bonus_awarded.emit(seconds)
 	return true
 
 
