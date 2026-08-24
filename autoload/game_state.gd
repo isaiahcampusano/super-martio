@@ -88,6 +88,14 @@ func register_collectible(collectible_id: StringName) -> bool:
 	return true
 
 
+func grant_extra_life() -> bool:
+	if run_status != RunStatus.PLAYING:
+		return false
+	lives += 1
+	lives_changed.emit(lives)
+	return true
+
+
 func request_player_death() -> void:
 	if run_status != RunStatus.PLAYING:
 		return
@@ -164,4 +172,3 @@ func _reset_run(level_id: StringName) -> void:
 	_collected_ids.clear()
 	lives_changed.emit(lives)
 	collectibles_changed.emit(0, 0)
-

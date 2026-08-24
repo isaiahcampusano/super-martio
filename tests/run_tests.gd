@@ -15,6 +15,7 @@ func _run() -> void:
 	_test_save_store()
 	await _test_game_state()
 	await _test_player_jump()
+	await _test_powerup_box()
 	await _test_scenes()
 	if _failures.is_empty():
 		print("PASS: Pocket Platformer automated checks completed successfully.")
@@ -177,6 +178,56 @@ func _test_player_jump() -> void:
 	await get_tree().process_frame
 
 
+func _test_powerup_box() -> void:
+	GameState.debug_begin_run(&"level_01")
+	GameState.register_level_spawn(Vector2.ZERO, 0)
+	var arena := Node2D.new()
+	get_tree().root.add_child(arena)
+	var block_scene := load("res://scenes/gameplay/breakable_block.tscn") as PackedScene
+	var block := block_scene.instantiate() as BreakableBlock
+	block.position = Vector2(0.0, 100.0)
+	arena.add_child(block)
+	await get_tree().physics_frame
+	_check(block.collision_layer == 1 << 0, "A powerup box should use the solid-world collision layer")
+	var shape := block.get_child(0) as CollisionShape2D
+	_check(shape != null and not shape.disabled, "A fresh powerup box should have an enabled solid collision shape")
+	var probe := CharacterBody2D.new()
+	probe.collision_layer = 1 << 1
+	probe.collision_mask = 1 << 0
+	var probe_collision := CollisionShape2D.new()
+	var probe_shape := RectangleShape2D.new()
+	probe_shape.size = Vector2(16.0, 16.0)
+	probe_collision.shape = probe_shape
+	probe.add_child(probe_collision)
+	arena.add_child(probe)
+	await get_tree().physics_frame
+	probe.position = Vector2(0.0, 40.0)
+	_check(probe.move_and_collide(Vector2(0.0, 80.0)) != null, "A player body should land on top of a powerup box")
+	probe.position = Vector2(-60.0, 100.0)
+	_check(probe.move_and_collide(Vector2(100.0, 0.0)) != null, "A powerup box should block horizontal movement")
+	probe.position = Vector2(0.0, 160.0)
+	_check(probe.move_and_collide(Vector2(0.0, -100.0)) != null, "A powerup box should block movement from below")
+
+	block.hit_from_below()
+	await get_tree().process_frame
+	_check(block.used, "A box hit from below should enter its used state")
+	_check(shape != null and not shape.disabled, "A used box should remain solid")
+	var powerups := arena.find_children("*", "PocketPowerup", true, false)
+	_check(powerups.size() == 1, "The first hit should spawn exactly one powerup")
+	block.hit_from_below()
+	await get_tree().process_frame
+	powerups = arena.find_children("*", "PocketPowerup", true, false)
+	_check(powerups.size() == 1, "A used box should not spawn another powerup")
+	if powerups.size() == 1:
+		probe.add_to_group(&"player")
+		var lives_before := GameState.lives
+		(powerups[0] as PocketPowerup)._on_body_entered(probe)
+		_check(GameState.lives == lives_before + 1, "Collecting the spawned Star Sprout should grant one life")
+	arena.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+
 func _test_scenes() -> void:
 	var required_scenes := [
 		"res://scenes/ui/main_menu.tscn",
@@ -187,6 +238,7 @@ func _test_scenes() -> void:
 		"res://scenes/enemies/ledge_patroller.tscn",
 		"res://scenes/enemies/bruiser.tscn",
 		"res://scenes/gameplay/collectible.tscn",
+		"res://scenes/gameplay/powerup.tscn",
 		"res://scenes/gameplay/checkpoint.tscn",
 		"res://scenes/gameplay/breakable_block.tscn",
 		"res://scenes/gameplay/moving_platform.tscn",
