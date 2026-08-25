@@ -48,6 +48,9 @@ func start_level(level_id: StringName) -> Error:
 	if path.is_empty():
 		push_error("Unknown level id: %s" % level_id)
 		return ERR_DOES_NOT_EXIST
+	if not LevelCatalog.is_unlocked(level_id, completed_levels):
+		push_warning("Level is still locked: %s" % level_id)
+		return ERR_UNAUTHORIZED
 	_reset_run(level_id)
 	run_status = RunStatus.LOADING
 	var error := get_tree().change_scene_to_file(path)

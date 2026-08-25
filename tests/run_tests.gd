@@ -29,7 +29,12 @@ func _run() -> void:
 
 func _test_catalog() -> void:
 	_check(LevelCatalog.has_level(&"level_01"), "Level catalog should contain level_01")
+	_check(LevelCatalog.has_level(&"level_02"), "Level catalog should contain level_02")
 	_check(LevelCatalog.get_scene_path(&"level_01") == "res://scenes/levels/level_01.tscn", "Level path should be stable")
+	_check(LevelCatalog.get_scene_path(&"level_02") == "res://scenes/levels/level_02.tscn", "Level 2 path should be stable")
+	_check(LevelCatalog.get_required_level(&"level_02") == &"level_01", "Level 2 should require level 1")
+	_check(not LevelCatalog.is_unlocked(&"level_02", PackedStringArray()), "Level 2 should begin locked")
+	_check(LevelCatalog.is_unlocked(&"level_02", PackedStringArray(["level_01"])), "Clearing level 1 should unlock level 2")
 	_check(LevelCatalog.get_scene_path(&"missing").is_empty(), "Unknown level IDs should not resolve")
 
 
@@ -288,6 +293,7 @@ func _test_scenes() -> void:
 		"res://scenes/gameplay/warp_zone.tscn",
 		"res://scenes/gameplay/level_exit.tscn",
 		"res://scenes/levels/level_01.tscn",
+		"res://scenes/levels/level_02.tscn",
 	]
 	for path: String in required_scenes:
 		_check(ResourceLoader.exists(path), "Scene should exist: %s" % path)
@@ -327,6 +333,27 @@ func _test_scenes() -> void:
 	Input.action_release(&"move_right")
 	Input.action_release(&"jump")
 	level.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	GameState.debug_begin_run(&"level_02")
+	var level_2_scene := load("res://scenes/levels/level_02.tscn") as PackedScene
+	var level_2 := level_2_scene.instantiate()
+	get_tree().root.add_child(level_2)
+	for frame in 8:
+		await get_tree().physics_frame
+	_check(level_2.get_node_or_null("Ground") is TileMapLayer, "Level 2 should build a Ground TileMapLayer")
+	_check(level_2.get_node_or_null("OneWayPlatforms") is TileMapLayer, "Level 2 should build a one-way TileMapLayer")
+	_check(level_2.get_node_or_null("Player") is PocketPlayer, "Level 2 should contain the player")
+	_check(get_tree().get_nodes_in_group(&"enemy").size() == 8, "Level 2 should contain eight enemy instances")
+	_check(level_2.find_children("*", "PocketPowerup", true, false).size() >= 1, "Level 2 should introduce a PocketPowerup")
+	_check(level_2.find_children("*", "PocketMovingPlatform", true, false).size() >= 1, "Level 2 should contain a moving platform")
+	_check(level_2.find_children("*", "PocketCheckpoint", true, false).size() == 1, "Level 2 should contain one checkpoint")
+	_check(level_2.find_children("*", "PocketWarpZone", true, false).size() == 2, "Level 2 should contain a two-way secret-area warp")
+	_check(level_2.find_children("*", "PocketLevelExit", true, false).size() == 1, "Level 2 should contain a level exit")
+	_check(GameState.collectible_total == 15, "Level 2 should expose fifteen collectible locations")
+	_check(level_2.get_node_or_null("KillPlane") is DeathZone, "Level 2 should contain a kill plane")
+	level_2.queue_free()
 	await get_tree().process_frame
 	await get_tree().process_frame
 
