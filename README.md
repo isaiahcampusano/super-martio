@@ -1,1 +1,1 @@
-(https://isaiahcampusano.github.io/supermartio/)
+(https://isaiahcampusano.github.io/super-martio/)
