@@ -15,6 +15,7 @@ func _run() -> void:
 	_test_save_store()
 	await _test_game_state()
 	await _test_player_jump()
+	await _test_shield_powerup()
 	await _test_powerup_box()
 	await _test_enemy_bonus()
 	await _test_scenes()
@@ -30,9 +31,12 @@ func _run() -> void:
 func _test_catalog() -> void:
 	_check(LevelCatalog.has_level(&"level_01"), "Level catalog should contain level_01")
 	_check(LevelCatalog.has_level(&"level_02"), "Level catalog should contain level_02")
+	_check(LevelCatalog.has_level(&"level_03"), "Level catalog should contain level_03")
 	_check(LevelCatalog.get_scene_path(&"level_01") == "res://scenes/levels/level_01.tscn", "Level path should be stable")
 	_check(LevelCatalog.get_scene_path(&"level_02") == "res://scenes/levels/level_02.tscn", "Level 2 path should be stable")
 	_check(LevelCatalog.get_required_level(&"level_02") == &"level_01", "Level 2 should require level 1")
+	_check(LevelCatalog.get_required_level(&"level_03") == &"level_02", "Level 3 should require level 2")
+	_check(LevelCatalog.is_unlocked(&"level_03", PackedStringArray(["level_02"])), "Clearing level 2 should unlock level 3")
 	_check(not LevelCatalog.is_unlocked(&"level_02", PackedStringArray()), "Level 2 should begin locked")
 	_check(LevelCatalog.is_unlocked(&"level_02", PackedStringArray(["level_01"])), "Clearing level 1 should unlock level 2")
 	_check(LevelCatalog.get_scene_path(&"missing").is_empty(), "Unknown level IDs should not resolve")
@@ -234,6 +238,32 @@ func _test_powerup_box() -> void:
 	await get_tree().process_frame
 
 
+func _test_shield_powerup() -> void:
+	GameState.debug_begin_run(&"level_01")
+	GameState.register_level_spawn(Vector2.ZERO, 0)
+	var arena := Node2D.new()
+	get_tree().root.add_child(arena)
+	var player := (load("res://scenes/player/player.tscn") as PackedScene).instantiate() as PocketPlayer
+	arena.add_child(player)
+	await get_tree().physics_frame
+	var lives_before := GameState.lives
+	_check(player.activate_shield(), "An unshielded player should accept a shield")
+	_check(player.has_shield, "Activating a shield should update player state")
+	_check(not player.activate_shield(), "A shield should not stack")
+	player.request_death()
+	_check(not player.has_shield, "The first damaging contact should consume the shield")
+	_check(GameState.lives == lives_before, "A shielded hit should not remove a life")
+	player.set("_spawn_protected", false)
+	player.request_death()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(GameState.lives == lives_before - 1, "An unshielded hit should use the normal death flow")
+	_check(not player.has_shield, "Respawning should leave the shield reset")
+	arena.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+
 func _test_enemy_bonus() -> void:
 	GameState.debug_begin_run(&"level_01")
 	GameState.register_level_spawn(Vector2.ZERO, 0)
@@ -286,6 +316,8 @@ func _test_scenes() -> void:
 		"res://scenes/enemies/bruiser.tscn",
 		"res://scenes/gameplay/collectible.tscn",
 		"res://scenes/gameplay/powerup.tscn",
+		"res://scenes/gameplay/shield_pickup.tscn",
+		"res://scenes/gameplay/falling_spike.tscn",
 		"res://scenes/gameplay/checkpoint.tscn",
 		"res://scenes/gameplay/breakable_block.tscn",
 		"res://scenes/gameplay/moving_platform.tscn",
@@ -294,6 +326,7 @@ func _test_scenes() -> void:
 		"res://scenes/gameplay/level_exit.tscn",
 		"res://scenes/levels/level_01.tscn",
 		"res://scenes/levels/level_02.tscn",
+		"res://scenes/levels/level_03.tscn",
 	]
 	for path: String in required_scenes:
 		_check(ResourceLoader.exists(path), "Scene should exist: %s" % path)
@@ -354,6 +387,21 @@ func _test_scenes() -> void:
 	_check(GameState.collectible_total == 15, "Level 2 should expose fifteen collectible locations")
 	_check(level_2.get_node_or_null("KillPlane") is DeathZone, "Level 2 should contain a kill plane")
 	level_2.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	GameState.debug_begin_run(&"level_03")
+	var level_3 := (load("res://scenes/levels/level_03.tscn") as PackedScene).instantiate()
+	get_tree().root.add_child(level_3)
+	for frame in 8:
+		await get_tree().physics_frame
+	_check(level_3.find_children("*", "ShieldPickup", true, false).size() == 3, "Level 3 should contain exactly three shield pickups")
+	_check(level_3.find_children("*", "PocketMovingPlatform", true, false).size() == 1, "Level 3 should contain its moving bridge")
+	_check(level_3.find_children("*", "FallingSpike", true, false).size() == 1, "Level 3 should contain its falling spike tutorial")
+	_check(get_tree().get_nodes_in_group(&"enemy").size() == 4, "Level 3 should contain four enemies")
+	_check(level_3.find_children("*", "PocketLevelExit", true, false).size() == 1, "Level 3 should contain a level exit")
+	_check(GameState.collectible_total == 12, "Level 3 should expose twelve collectible locations")
+	level_3.queue_free()
 	await get_tree().process_frame
 	await get_tree().process_frame
 

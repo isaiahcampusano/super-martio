@@ -26,6 +26,7 @@ var facing := 1.0
 var controls_enabled := true
 var is_crouched := false
 var animation_state := AnimationState.IDLE
+var has_shield := false
 
 var _standing_shape: CollisionShape2D
 var _crouching_shape: CollisionShape2D
@@ -155,6 +156,12 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	if has_shield:
+		var shield_pulse := (sin(_animation_time * 4.0) + 1.0) * 0.5
+		var shield_color := Color(0.28, 0.82, 1.0, 0.55 + shield_pulse * 0.18)
+		draw_circle(Vector2(0.0, 1.0), 31.0 + shield_pulse * 2.0, Color(0.10, 0.45, 0.85, 0.16))
+		draw_arc(Vector2(0.0, 1.0), 30.0 + shield_pulse * 2.0, 0.0, TAU, 36, shield_color, 3.0)
+
 	if _air_jump_feedback_remaining > 0.0:
 		var feedback_progress := 1.0 - _air_jump_feedback_remaining / maxf(air_jump_feedback_time, 0.001)
 		var ring_color := Color(0.97, 0.89, 0.35, 1.0 - feedback_progress)
@@ -252,10 +259,31 @@ func request_death() -> void:
 		return
 	if Engine.get_physics_frames() == _last_stomp_frame:
 		return
+	if has_shield:
+		_break_shield()
+		return
 	controls_enabled = false
 	velocity = Vector2.ZERO
 	PocketSfx.play(self, 150.0, 0.22, -10.0, -85.0)
 	GameState.request_player_death()
+
+
+func activate_shield() -> bool:
+	if has_shield or not controls_enabled:
+		return false
+	has_shield = true
+	PocketSfx.play(self, 760.0, 0.18, -12.0, 420.0)
+	queue_redraw()
+	return true
+
+
+func _break_shield() -> void:
+	has_shield = false
+	_spawn_protected = true
+	_protection_remaining = 0.65
+	velocity = Vector2(-facing * 120.0, -180.0)
+	PocketSfx.play(self, 980.0, 0.20, -9.0, -520.0)
+	queue_redraw()
 
 
 func _build_body() -> void:
@@ -350,6 +378,7 @@ func _on_respawn_requested(position: Vector2) -> void:
 	_landing_squash_remaining = 0.0
 	_run_cycle = 0.0
 	controls_enabled = true
+	has_shield = false
 	_spawn_protected = true
 	_protection_remaining = 1.25
 	visible = true

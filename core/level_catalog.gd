@@ -13,6 +13,11 @@ const LEVELS := {
 		"scene": "res://scenes/levels/level_02.tscn",
 		"required_level": &"level_01",
 	},
+	&"level_03": {
+		"title": "Amberdeep Aegis",
+		"scene": "res://scenes/levels/level_03.tscn",
+		"required_level": &"level_02",
+	},
 }
 
 
