@@ -13,9 +13,9 @@ func _ready() -> void:
 	monitoring = true
 	var collision := CollisionShape2D.new()
 	var shape := RectangleShape2D.new()
-	shape.size = Vector2(52.0, 96.0)
+	shape.size = Vector2(52.0, 1080.0)
 	collision.shape = shape
-	collision.position = Vector2(0.0, -24.0)
+	collision.position = Vector2(0.0, -480.0)
 	add_child(collision)
 	body_entered.connect(_on_body_entered)
 	GameState.checkpoint_changed.connect(_on_checkpoint_changed)
@@ -43,4 +43,3 @@ func _on_checkpoint_changed(value: StringName) -> void:
 	_active = true
 	PocketSfx.play(self, 540.0, 0.20, -14.0, 320.0)
 	queue_redraw()
-
