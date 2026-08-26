@@ -193,16 +193,28 @@ func _draw() -> void:
 
 	draw_set_transform(Vector2(0.0, 24.0 + idle_bob), visual_rotation, visual_scale)
 	var top := -height
-	var body_color := Color("66e6b4")
+	var body_color := Color("78efbd")
 	var shadow_color := Color("1d8d78")
-	draw_rect(Rect2(-16.0, top, 32.0, height), body_color, true)
-	draw_rect(Rect2(-16.0, -10.0, 32.0, 10.0), shadow_color, true)
+	var leg_color := Color("287f70")
+	var belt_color := Color("163f49")
+	# A tapered, brighter torso and darker independent legs give the Martian a
+	# readable humanoid silhouette while retaining the procedural animation.
+	draw_colored_polygon(PackedVector2Array([
+		Vector2(-14.0, top), Vector2(14.0, top),
+		Vector2(16.0, -13.0), Vector2(11.0, -9.0),
+		Vector2(-11.0, -9.0), Vector2(-16.0, -13.0),
+	]), body_color)
+	draw_rect(Rect2(-12.0, -11.0, 24.0, 5.0), belt_color, true)
+	draw_circle(Vector2(0.0, -8.5), 2.0, Color("8defff"))
 
 	var arm_swing := -stride * 0.55
 	draw_line(Vector2(-15.0, top + 22.0), Vector2(-20.0 + arm_swing, top + 31.0), body_color.lightened(0.18), 4.0)
 	draw_line(Vector2(15.0, top + 22.0), Vector2(20.0 - arm_swing, top + 31.0), body_color.lightened(0.18), 4.0)
-	draw_line(Vector2(-10.0, -4.0), Vector2(-10.0 + stride, 0.0), Color("b5ffe5"), 4.0)
-	draw_line(Vector2(10.0, -4.0), Vector2(10.0 - stride, 0.0), Color("b5ffe5"), 4.0)
+	var leg_stride := stride * 0.72
+	draw_line(Vector2(-7.0, -6.0), Vector2(-10.0 + leg_stride, -1.0), leg_color, 7.0)
+	draw_line(Vector2(7.0, -6.0), Vector2(10.0 - leg_stride, -1.0), leg_color.darkened(0.08), 7.0)
+	draw_line(Vector2(-13.0 + leg_stride, -1.0), Vector2(-7.0 + leg_stride, -1.0), Color("b5ffe5"), 3.0)
+	draw_line(Vector2(7.0 - leg_stride, -1.0), Vector2(13.0 - leg_stride, -1.0), Color("b5ffe5"), 3.0)
 
 	var sprout_sway := sin(_animation_time * 3.1) * 2.0 + stride * 0.12
 	draw_line(Vector2(0.0, top), Vector2(sprout_sway, top - 7.0), shadow_color, 3.0)
